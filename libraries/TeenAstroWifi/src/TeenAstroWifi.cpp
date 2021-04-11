@@ -227,7 +227,30 @@ void TeenAstroWifi::preparePage(String &data, int page)
   data += FPSTR(html_header1);
   if (ta_MountStatus.hasInfoV()) data += ta_MountStatus.getVP(); else data += "Connection to TeenAstro Main unit is lost";
   data += FPSTR(html_header2);
-  if (ta_MountStatus.hasInfoV()) data += ta_MountStatus.getVN(); else data += "?";
+  if (ta_MountStatus.hasInfoV())
+  {
+    data += ta_MountStatus.getVN();
+    data += " Board ";
+    data += ta_MountStatus.getVB();
+    data += " Driver ";
+    switch (ta_MountStatus.getVb()[0])
+    {
+    default:
+    case '0':
+      data += "unkown";
+      break;
+    case '1':
+      data += "TOS100";
+      break;
+    case '2':
+      data += "TMC2130";
+      break;
+    case '3':
+      data += "TMC5160";
+      break;
+    }
+  }
+  else data += "?";
   data += FPSTR(html_header3);
   data += page == 1 ? FPSTR(html_links1S) : FPSTR(html_links1N);
   data += page == 2 ? FPSTR(html_links2S) : FPSTR(html_links2N);
@@ -485,48 +508,53 @@ void TeenAstroWifi::update()
     if (!cmdSvrClient && cmdSvr.hasClient()) {
       // find free/disconnected spot
       cmdSvrClient = cmdSvr.available();
-      clientTime = millis() + 1000UL;
+      clientTime = millis() + 2000UL;
       break;
     }
     break;
   }
 
 
-  static char writeBuffer[50] = "";
-  static int writeBufferPos = 0;
   // check clients for data, if found get the command, send cmd and pickup the response, then return the response
-  while (cmdSvrClient && cmdSvrClient.connected() && (cmdSvrClient.available() > 0)) {
-    // get the data
-    byte b = cmdSvrClient.read();
-    if (writeBufferPos == 0 && b != ':')
-      continue;
-    writeBuffer[writeBufferPos] = b;
-    writeBufferPos++;
-    if (writeBufferPos > 49)
+  while (cmdSvrClient.connected() && cmdSvrClient.available())
+  {
+    static char writeBuffer[50] = "";
+    static int writeBufferPos = 0;
+    while (cmdSvrClient.available())
     {
-      writeBufferPos = 0;
-      writeBuffer[writeBufferPos] = 0;
-      continue;
-    }
-    writeBuffer[writeBufferPos] = 0;
-    // send cmd and pickup the response
-    if ((b == '#') || ((strlen(writeBuffer) == 1) && (b == (char)6))) {
-      char readBuffer[50] = "";
-      if (readLX200Bytes(writeBuffer, readBuffer, sizeof(readBuffer), CmdTimeout, true))
+      // get the data
+      byte b = cmdSvrClient.read();
+      if (writeBufferPos == 0 && b != ':')
+        continue;
+      writeBuffer[writeBufferPos] = b;
+      writeBufferPos++;
+      if (writeBufferPos > 49)
       {
-        // return the response, if we have one
-        if (strlen(readBuffer) > 0)
+        writeBufferPos = 0;
+        writeBuffer[writeBufferPos] = 0;
+        continue;
+      }
+      writeBuffer[writeBufferPos] = 0;
+      // send cmd and pickup the response
+      if ((b == '#') || ((strlen(writeBuffer) == 1) && (b == (char)6)))
+      {
+        char readBuffer[50] = "";
+        if (readLX200Bytes(writeBuffer, readBuffer, sizeof(readBuffer), CmdTimeout, true))
         {
-          if (cmdSvrClient && cmdSvrClient.connected()) {
-            cmdSvrClient.print(readBuffer);
-            delay(3);
+          // return the response, if we have one
+          if (strlen(readBuffer) > 0)
+          {
+            if (cmdSvrClient.connected())
+            {
+              cmdSvrClient.print(readBuffer);
+            }
           }
         }
+        writeBuffer[0] = 0;
+        writeBufferPos = 0;
       }
-      writeBuffer[0] = 0;
-      writeBufferPos = 0;
+      else server.handleClient();
     }
-    else server.handleClient();
   }
 }
 
